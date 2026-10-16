@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mockup Studio</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo"></span>Mockup Studio</div>
+    <div class="top-actions">
+      <button class="icon-btn" id="undoBtn" title="Ongedaan maken (Ctrl+Z)" aria-label="Ongedaan maken">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      </button>
+      <button class="icon-btn" id="redoBtn" title="Opnieuw (Ctrl+Shift+Z)" aria-label="Opnieuw">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+      </button>
+      <span class="divider"></span>
+      <button class="btn ghost" id="resetBtn">Opnieuw beginnen</button>
+      <button class="btn ghost" id="uploadBtn">Afbeelding kiezen</button>
+      <button class="btn primary" id="exportBtnTop">Exporteren</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section class="group">
+        <h3>Media</h3>
+        <div class="chips" id="layoutChips"></div>
+        <div class="slots" id="slots"></div>
+      </section>
+
+      <section class="group">
+        <h3>Stijl</h3>
+        <div class="frame-grid" id="styleGrid"></div>
+        <h4>Apparaat</h4>
+        <div class="tabs devcats" id="deviceCats"></div>
+        <div class="device-grid" id="deviceGrid"></div>
+        <div class="row" id="orientRow">
+          <label>Stand</label>
+          <div class="seg">
+            <button data-set="orientation" data-value="portrait">Staand</button>
+            <button data-set="orientation" data-value="landscape">Liggend</button>
+          </div>
+        </div>
+        <div class="row" id="fitRow">
+          <label>Afbeelding op scherm</label>
+          <div class="seg">
+            <button data-set="fit" data-value="fill">Vullen</button>
+            <button data-set="fit" data-value="fit">Passend</button>
+          </div>
+        </div>
+        <div class="row" id="deviceColorRow">
+          <label>Kleur toestel</label>
+          <div class="swatches" id="deviceColors"></div>
+        </div>
+        <div class="row" id="urlRow">
+          <label for="urlInput">Adresbalk</label>
+          <input type="text" id="urlInput" class="text" spellcheck="false" placeholder="jouwwebsite.nl">
+        </div>
+        <div id="cornerRow">
+          <div class="chips spaced" id="cornerChips"></div>
+          <div class="slider" data-bind="radius" data-label="Hoekradius" data-min="0" data-max="80" data-step="1"></div>
+        </div>
+        <button class="toggle" data-toggle="hideMockup"><span class="knob"></span>Mockup verbergen</button>
+      </section>
+
+      <section class="group">
+        <h3>Schaduw</h3>
+        <div class="chips" id="shadowChips"></div>
+        <div class="slider" data-bind="shadow.opacity" data-label="Dekking" data-min="0" data-max="1" data-step="0.01" data-fmt="pct"></div>
+        <div class="slider" data-bind="shadow.blur" data-label="Vervaging" data-min="0" data-max="300" data-step="1"></div>
+        <div class="slider" data-bind="shadow.y" data-label="Afstand" data-min="-100" data-max="200" data-step="1"></div>
+      </section>
+
+      <section class="group">
+        <h3>Layout</h3>
+        <div class="tpl-grid" id="templateGrid"></div>
+        <div class="slider" data-bind="scale" data-label="Zoom" data-min="0.2" data-max="1.6" data-step="0.01" data-fmt="x"></div>
+        <div class="slider" data-bind="offX" data-label="Positie X" data-min="-60" data-max="60" data-step="0.1"></div>
+        <div class="slider" data-bind="offY" data-label="Positie Y" data-min="-60" data-max="60" data-step="0.1"></div>
+        <div class="slider" data-bind="rotX" data-label="Kantelen (X)" data-min="-60" data-max="60" data-step="1" data-fmt="deg"></div>
+        <div class="slider" data-bind="rotY" data-label="Draaien (Y)" data-min="-60" data-max="60" data-step="1" data-fmt="deg"></div>
+        <div class="slider" data-bind="rotZ" data-label="Rotatie (Z)" data-min="-180" data-max="180" data-step="1" data-fmt="deg"></div>
+        <div class="slider" data-bind="perspective" data-label="Perspectief" data-min="1" data-max="8" data-step="0.1" data-fmt="x"></div>
+      </section>
+    </aside>
+
+    <section class="stage" id="stage">
+      <button class="add-pill" id="addPill">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Eigen screenshot toevoegen
+      </button>
+      <div class="canvas-wrap" id="canvasWrap"><canvas id="preview"></canvas></div>
+      <div class="stage-foot"><span id="sizeLabel"></span> · Sleep of plak (Ctrl+V) afbeeldingen · Sleep de mockup om te verplaatsen, houd Shift vast voor precisie</div>
+      <div class="drop-overlay"><div>Laat los om toe te voegen</div></div>
+    </section>
+
+    <aside class="panel">
+      <section class="group">
+        <h3>Formaat</h3>
+        <div class="size-grid" id="sizeGrid"></div>
+        <div class="custom-size" id="customSize">
+          <input type="number" id="customW" class="text" min="200" max="6000" aria-label="Breedte">
+          <span>×</span>
+          <input type="number" id="customH" class="text" min="200" max="6000" aria-label="Hoogte">
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>Achtergrond</h3>
+        <div class="tabs">
+          <button data-bgtab="gradient">Verloop</button>
+          <button data-bgtab="magic">Magic</button>
+          <button data-bgtab="solid">Kleur</button>
+          <button data-bgtab="image">Foto</button>
+          <button data-bgtab="transparent">Geen</button>
+        </div>
+        <div data-pane="gradient"><div class="grad-grid" id="gradGrid"></div></div>
+        <div data-pane="magic">
+          <p class="hint">Achtergrond op basis van de kleuren in je screenshot.</p>
+          <div class="seg">
+            <button data-set="bg.type" data-value="magic-mesh">Kleurvlakken</button>
+            <button data-set="bg.type" data-value="magic-blur">Vervaagd</button>
+          </div>
+        </div>
+        <div data-pane="solid">
+          <div class="row inline">
+            <input type="color" id="colorInput" aria-label="Achtergrondkleur">
+            <div class="swatches" id="solidSwatches"></div>
+          </div>
+        </div>
+        <div data-pane="image">
+          <button class="btn ghost full" id="bgUploadBtn">Andere afbeelding kiezen</button>
+        </div>
+        <div data-pane="transparent"><p class="hint">Transparante achtergrond. Exporteer als PNG om de transparantie te behouden.</p></div>
+        <div class="slider" id="noiseSlider" data-bind="bg.noise" data-label="Ruis" data-min="0" data-max="0.5" data-step="0.01" data-fmt="pct"></div>
+      </section>
+
+      <section class="group">
+        <h3>Effecten</h3>
+        <label class="sub">Overlay</label>
+        <div class="seg">
+          <button data-set="overlay" data-value="none">Geen</button>
+          <button data-set="overlay" data-value="window">Raamlicht</button>
+          <button data-set="overlay" data-value="shapes">Vormen</button>
+        </div>
+        <label class="sub">Filter</label>
+        <div class="seg">
+          <button data-set="fx" data-value="none">Geen</button>
+          <button data-set="fx" data-value="vhs">VHS</button>
+          <button data-set="fx" data-value="glitch">Glitch</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>Watermerk</h3>
+        <button class="toggle" data-toggle="watermark.enabled"><span class="knob"></span>Watermerk tonen</button>
+        <div id="wmOptions">
+          <input type="text" id="wmText" class="text spaced" spellcheck="false" placeholder="@jouwmerk">
+          <div class="seg">
+            <button data-set="watermark.position" data-value="tl">↖</button>
+            <button data-set="watermark.position" data-value="tr">↗</button>
+            <button data-set="watermark.position" data-value="bc">↓</button>
+            <button data-set="watermark.position" data-value="bl">↙</button>
+            <button data-set="watermark.position" data-value="br">↘</button>
+          </div>
+          <div class="seg">
+            <button data-set="watermark.theme" data-value="light">Licht</button>
+            <button data-set="watermark.theme" data-value="dark">Donker</button>
+          </div>
+          <div class="slider" data-bind="watermark.opacity" data-label="Dekking" data-min="0.1" data-max="1" data-step="0.01" data-fmt="pct"></div>
+          <div class="slider" data-bind="watermark.size" data-label="Grootte" data-min="12" data-max="72" data-step="1"></div>
+        </div>
+      </section>
+
+      <section class="group">
+        <h3>Animeren</h3>
+        <div class="chips" id="animChips"></div>
+        <div class="slider" data-bind="anim.duration" data-label="Duur" data-min="2" data-max="10" data-step="1" data-fmt="s"></div>
+        <button class="btn ghost full" id="playBtn">Afspelen</button>
+        <button class="btn ghost full" id="videoBtn">Video exporteren</button>
+      </section>
+
+      <section class="group">
+        <h3>Exporteren</h3>
+        <div class="seg">
+          <button data-set="export.format" data-value="png">PNG</button>
+          <button data-set="export.format" data-value="jpeg">JPG</button>
+        </div>
+        <div class="seg">
+          <button data-set="export.mult" data-value="1">1×</button>
+          <button data-set="export.mult" data-value="2">2×</button>
+          <button data-set="export.mult" data-value="3">3×</button>
+        </div>
+        <p class="hint" id="exportDims"></p>
+        <p class="hint warn" id="jpegNote">JPG ondersteunt geen transparantie: de achtergrond wordt wit.</p>
+        <button class="btn primary full" id="exportBtn">Downloaden</button>
+        <button class="btn ghost full" id="copyBtn">Kopiëren naar klembord</button>
+      </section>
+    </aside>
+  </main>
+
+  <input type="file" id="fileInput" accept="image/*" hidden>
+  <input type="file" id="bgFileInput" accept="image/*" hidden>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="js/vendor/mediabunny-1.61.0.min.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/frames.js"></script>
+  <script src="js/backgrounds.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/animate.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
