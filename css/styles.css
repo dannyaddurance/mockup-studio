@@ -262,6 +262,17 @@ input[type="color"] {
 .slot:hover { border-color: var(--accent); }
 .slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .slot .plus { font-size: 20px; color: var(--muted); line-height: 1; }
+.slot-badge {
+  position: absolute; right: 5px; top: 4px;
+  font-size: 9px; font-style: normal;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+.video-ctl { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.video-ctl .btn { flex: none; padding: 5px 10px; }
+.video-ctl output { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .slot small {
   position: absolute; left: 5px; bottom: 4px;
   font-size: 10px;

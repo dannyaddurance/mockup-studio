@@ -8,7 +8,8 @@ Dubbelklik `index.html` (Chrome of Edge aanbevolen).
 
 ## Functies
 
-- Media: tot 3 screenshots (Enkel, Duo, Trio, Stapel) via knop, slepen of plakken (Ctrl+V)
+- Media: tot 3 screenshots of video's (Enkel, Duo, Trio, Stapel) via knop, slepen of plakken (Ctrl+V)
+- Video: speelt af in de mockup, met pauzeknop en tijdlijn; de video-export volgt de lengte van de video (max. 120 s, zonder geluid)
 - Stijlen: Standaard, Glas licht/donker, Vloeibaar glas, Inzet licht/donker, Omlijning, Rand
 - Apparaten met echte verhoudingen (behuizing in mm, schermresolutie), staand of liggend, scherm vullen of passend:
   - iPhone 17 Pro, 17 Pro Max, Air, 17, 16e, SE

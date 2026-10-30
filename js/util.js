@@ -88,7 +88,7 @@ window.MS = window.MS || {};
   }
 
   function srcSize(src) {
-    return { w: src.naturalWidth || src.width, h: src.naturalHeight || src.height };
+    return { w: src.naturalWidth || src.videoWidth || src.width, h: src.naturalHeight || src.videoHeight || src.height };
   }
 
   // Draws src into (0,0,w,h) with object-fit: cover.

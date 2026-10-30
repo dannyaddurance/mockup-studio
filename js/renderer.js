@@ -156,6 +156,13 @@
       return tex;
     }
 
+    // Frees the texture of a source that will not be drawn again (old video frames).
+    release(src) {
+      if (!this.gl || !this.textures.has(src)) return;
+      this.gl.deleteTexture(this.textures.get(src));
+      this.textures.delete(src);
+    }
+
     // p: { qw, qh, rotX, rotY, rotZ, offX, offY, dist }
     draw(src, W, H, p) {
       const gl = this.gl;

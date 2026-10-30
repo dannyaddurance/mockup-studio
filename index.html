@@ -18,7 +18,7 @@
       </button>
       <span class="divider"></span>
       <button class="btn ghost" id="resetBtn">Opnieuw beginnen</button>
-      <button class="btn ghost" id="uploadBtn">Afbeelding kiezen</button>
+      <button class="btn ghost" id="uploadBtn">Media kiezen</button>
       <button class="btn primary" id="exportBtnTop">Exporteren</button>
     </div>
   </header>
@@ -29,6 +29,11 @@
         <h3>Media</h3>
         <div class="chips" id="layoutChips"></div>
         <div class="slots" id="slots"></div>
+        <div class="video-ctl" id="videoCtl" hidden>
+          <button class="btn ghost" id="videoPauseBtn">Pauzeren</button>
+          <input type="range" id="videoSeek" min="0" max="1" step="0.01" value="0" aria-label="Positie in de video">
+          <output id="videoTime">0:00</output>
+        </div>
       </section>
 
       <section class="group">
@@ -45,7 +50,7 @@
           </div>
         </div>
         <div class="row" id="fitRow">
-          <label>Afbeelding op scherm</label>
+          <label>Media op scherm</label>
           <div class="seg">
             <button data-set="fit" data-value="fill">Vullen</button>
             <button data-set="fit" data-value="fit">Passend</button>
@@ -90,10 +95,10 @@
     <section class="stage" id="stage">
       <button class="add-pill" id="addPill">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        Eigen screenshot toevoegen
+        Eigen screenshot of video toevoegen
       </button>
       <div class="canvas-wrap" id="canvasWrap"><canvas id="preview"></canvas></div>
-      <div class="stage-foot"><span id="sizeLabel"></span> · Sleep of plak (Ctrl+V) afbeeldingen · Sleep de mockup om te verplaatsen, houd Shift vast voor precisie</div>
+      <div class="stage-foot"><span id="sizeLabel"></span> · Sleep of plak (Ctrl+V) afbeeldingen of video’s · Sleep de mockup om te verplaatsen, houd Shift vast voor precisie</div>
       <div class="drop-overlay"><div>Laat los om toe te voegen</div></div>
     </section>
 
@@ -178,7 +183,8 @@
       <section class="group">
         <h3>Animeren</h3>
         <div class="chips" id="animChips"></div>
-        <div class="slider" data-bind="anim.duration" data-label="Duur" data-min="2" data-max="10" data-step="1" data-fmt="s"></div>
+        <div class="slider" id="animDuration" data-bind="anim.duration" data-label="Duur" data-min="2" data-max="10" data-step="1" data-fmt="s"></div>
+        <p class="hint" id="videoLenNote" hidden></p>
         <button class="btn ghost full" id="playBtn">Afspelen</button>
         <button class="btn ghost full" id="videoBtn">Video exporteren</button>
       </section>
@@ -202,7 +208,7 @@
     </aside>
   </main>
 
-  <input type="file" id="fileInput" accept="image/*" hidden>
+  <input type="file" id="fileInput" accept="image/*,video/*" hidden>
   <input type="file" id="bgFileInput" accept="image/*" hidden>
   <div class="toast" id="toast" role="status"></div>
 

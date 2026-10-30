@@ -8,6 +8,9 @@
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const STORAGE_KEY = 'mockup-studio-state-v1';
   const MAX_SLOTS = 3;
+  const VIDEO_PREVIEW_DIM = 1280; // mockup size while a video plays in the preview
+  const VIDEO_EXPORT_DIM = 2048; // mockup size per frame of a video export
+  const MAX_VIDEO_SECONDS = 120; // exports are kept in memory
 
   const SIZES = [
     { id: 'landscape', name: 'Liggend 16:9', w: 1920, h: 1080 },
@@ -138,15 +141,17 @@
   state.frame = frames.resolve(state.frame);
 
   const assets = {
-    images: new Array(MAX_SLOTS).fill(null),
+    media: new Array(MAX_SLOTS).fill(null), // HTMLImageElement or HTMLVideoElement
     urls: new Array(MAX_SLOTS).fill(null),
+    thumbs: new Array(MAX_SLOTS).fill(null),
     ids: new Array(MAX_SLOTS).fill(0),
     counter: 0,
     bgImage: null,
     bgImageId: 0,
     placeholders: null,
   };
-  const hasImage = () => assets.images.some(Boolean);
+  const hasMedia = () => assets.media.some(Boolean);
+  const isVideo = (src) => src instanceof HTMLVideoElement;
   const projector = new Projector();
   const preview = $('#preview');
   const pctx = preview.getContext('2d');
@@ -154,6 +159,7 @@
   let pendingSlot = null;
   let playing = false;
   let recording = false;
+  let videoPaused = false;
 
   // ---------- history
 
@@ -191,42 +197,48 @@
 
   // ---------- sources, mockups and background caches
 
-  function currentSource(slot) {
-    if (assets.images[slot]) return { src: assets.images[slot], id: 'img' + assets.ids[slot] };
+  function currentSource(slot, st = state) {
+    if (assets.media[slot]) return { src: assets.media[slot], id: 'media' + assets.ids[slot] };
     if (!assets.placeholders) {
       assets.placeholders = { wide: util.makePlaceholder(false), tall: util.makePlaceholder(true) };
     }
-    const aspect = frames.contentAspect(state.frame, state.orientation);
+    const aspect = frames.contentAspect(st.frame, st.orientation);
     return aspect && aspect > 1.25
       ? { src: assets.placeholders.tall, id: 'ph-tall' }
       : { src: assets.placeholders.wide, id: 'ph-wide' };
   }
 
+  const fullDim = () => Math.min(3200, Math.floor((projector.ok ? projector.maxTex : 4096) * 0.75));
+
+  // A video mockup is rebuilt for every new frame, at maxDim (preview size by default).
   const mockCache = [];
-  function getMock(slot) {
-    const { src, id } = currentSource(slot);
-    const key = [id, state.frame, state.radius, state.deviceColor, state.url, state.orientation, state.fit].join('|');
+  function getMock(slot, maxDim = VIDEO_PREVIEW_DIM, st = state) {
+    const { src, id } = currentSource(slot, st);
+    const video = isVideo(src);
+    const dim = video ? Math.min(maxDim, fullDim()) : fullDim();
+    const time = video ? src.currentTime : 0;
+    const key = [id, st.frame, st.radius, st.deviceColor, st.url, st.orientation, st.fit].join('|');
     const hit = mockCache[slot];
-    if (hit && hit.key === key) return hit.canvas;
+    if (hit && hit.key === key && hit.time === time && hit.dim === dim) return hit.canvas;
     // identical sources share one canvas, so the GPU texture is reused too
-    const twin = mockCache.find((m) => m && m.key === key);
-    const maxTex = projector.ok ? projector.maxTex : 4096;
+    const twin = !video && mockCache.find((m) => m && m.key === key);
     const canvas = twin
       ? twin.canvas
-      : frames.build(state.frame, src, {
-          radius: state.radius,
-          deviceColor: state.deviceColor,
-          url: state.url,
-          orientation: state.orientation,
-          fit: state.fit,
-          maxDim: Math.min(3200, Math.floor(maxTex * 0.75)),
+      : frames.build(st.frame, src, {
+          radius: st.radius,
+          deviceColor: st.deviceColor,
+          url: st.url,
+          orientation: st.orientation,
+          fit: st.fit,
+          maxDim: dim,
         });
-    mockCache[slot] = { key, canvas };
+    if (hit && hit.video) projector.release(hit.canvas);
+    mockCache[slot] = { key, canvas, video, time, dim };
     return canvas;
   }
-  function getMocks() {
-    const n = slotCount(state.layout);
-    return Array.from({ length: n }, (_, i) => getMock(i));
+  function getMocks(maxDim, st = state) {
+    const n = slotCount(st.layout);
+    return Array.from({ length: n }, (_, i) => getMock(i, maxDim, st));
   }
   const mocksKey = () => mockCache.slice(0, slotCount(state.layout)).map((m) => m && m.key).join('#') + state.layout;
   const getPalette = () => backgrounds.palette(currentSource(0));
@@ -342,7 +354,7 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, RW, RH);
     }
-    compose(ctx, { RW, RH, W, H, s, state, mocks: getMocks(), bg: buildBackground(RW, RH), projector, palette: getPalette() });
+    compose(ctx, { RW, RH, W, H, s, state, mocks: getMocks(fullDim()), bg: buildBackground(RW, RH), projector, palette: getPalette() });
     requestRender();
 
     const blob = await new Promise((res) => canvas.toBlob(res, format === 'jpeg' ? 'image/jpeg' : 'image/png', 0.92));
@@ -368,7 +380,12 @@
   function playPreview() {
     if (playing || recording) return;
     const base = clone(state);
-    const dur = state.anim.duration * 1000;
+    const dur = animSeconds() * 1000;
+    if (activeVideos().length) {
+      seekVideos(activeVideos(), 0);
+      videoPaused = false;
+      syncVideos();
+    }
     const start = performance.now();
     playing = true;
     const tick = (now) => {
@@ -397,16 +414,20 @@
     const { canvas, ctx } = util.makeCanvas(RW, RH);
     const base = clone(state);
     const bg = buildBackground(RW, RH);
-    const mocks = getMocks();
     const palette = getPalette();
-    const dur = base.anim.duration * 1000;
+    const videos = activeVideos();
+    const savedTimes = videos.map((v) => v.currentTime);
+    const dur = animSeconds() * 1000;
     const draw = (t) => {
       ctx.fillStyle = '#000000'; // video has no alpha channel
       ctx.fillRect(0, 0, RW, RH);
+      const mocks = getMocks(VIDEO_EXPORT_DIM, base);
       compose(ctx, { RW, RH, W, H, s: RW / W, state: animate.frameState(base, base.anim.preset, t), mocks, bg, projector, palette });
     };
 
     const record = async (type) => {
+      await seekVideos(videos, 0);
+      videos.forEach((v) => v.play().catch(() => {}));
       draw(0);
       const stream = canvas.captureStream(30);
       const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 16e6 });
@@ -428,6 +449,7 @@
       await new Promise((r) => setTimeout(r, 200));
       rec.stop();
       await stopped;
+      videos.forEach((v) => v.pause());
       stream.getTracks().forEach((t) => t.stop());
       return new Blob(chunks, { type: type.split(';')[0] });
     };
@@ -455,6 +477,7 @@
       output.addVideoTrack(source, { frameRate: fps });
       await output.start();
       for (let i = 0; i < total; i++) {
+        await seekVideos(videos, i / fps);
         draw(i / (total - 1));
         await source.add(i / fps, 1 / fps);
         if (i % 5 === 0) $('#videoBtn').textContent = `Renderen… ${Math.round((i / total) * 100)}%`;
@@ -465,6 +488,7 @@
 
     recording = true;
     setVideoBusy(true);
+    videos.forEach((v) => v.pause());
     let result = null;
     try {
       result = await encode();
@@ -482,8 +506,10 @@
       }
       result = { blob, type: used };
     }
+    await Promise.all(videos.map((v, i) => seekVideo(v, savedTimes[i])));
     recording = false;
     setVideoBusy(false);
+    syncVideos();
 
     const blob = result ? result.blob : new Blob();
     if (!blob.size) {
@@ -503,7 +529,92 @@
     if (!busy) $('#videoBtn').textContent = 'Video exporteren';
   }
 
-  // ---------- image loading
+  // ---------- video playback
+
+  // Videos in the current layout; exports and the timeline only look at these.
+  function activeVideos() {
+    if (state.hideMockup) return [];
+    return assets.media.slice(0, slotCount(state.layout)).filter(isVideo);
+  }
+
+  const longestVideo = (videos) => Math.max(...videos.map((v) => v.duration).filter(Number.isFinite), 0);
+
+  // Length of an animation or export: the animation setting, or the video when there is one.
+  function animSeconds() {
+    const len = longestVideo(activeVideos());
+    return len ? Math.min(MAX_VIDEO_SECONDS, len) : state.anim.duration;
+  }
+
+  // Shorter videos loop, so any time on the shared timeline is valid.
+  function seekVideo(video, time) {
+    const target = Math.min(time % video.duration, video.duration - 0.001);
+    if (Math.abs(video.currentTime - target) < 0.001) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        video.removeEventListener('seeked', done);
+        resolve();
+      };
+      const timer = setTimeout(done, 3000);
+      video.addEventListener('seeked', done);
+      video.currentTime = target;
+    });
+  }
+  const seekVideos = (videos, time) => Promise.all(videos.map((v) => seekVideo(v, time)));
+
+  function syncVideos() {
+    if (recording) return;
+    const active = activeVideos();
+    assets.media.filter(isVideo).forEach((v) => {
+      if (active.includes(v) && !videoPaused) v.paused && v.play().catch(() => {});
+      else v.pause();
+    });
+    const len = longestVideo(active);
+    $('#videoCtl').hidden = !active.length;
+    $('#videoPauseBtn').textContent = videoPaused ? 'Afspelen' : 'Pauzeren';
+    $('#videoSeek').max = len;
+    if (!videoPaused) updateVideoTime(active);
+    $('#animDuration').hidden = active.length > 0;
+    $('#videoLenNote').hidden = !active.length;
+    $('#videoLenNote').textContent =
+      len > MAX_VIDEO_SECONDS
+        ? `De export stopt na ${MAX_VIDEO_SECONDS} s; je video duurt ${Math.round(len)} s.`
+        : `De duur volgt de video: ${Math.round(len)} s. Geluid wordt niet meegenomen.`;
+  }
+
+  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  function updateVideoTime(active) {
+    const video = active.find((v) => v.duration === longestVideo(active)) || active[0];
+    if (!video) return;
+    $('#videoSeek').value = video.currentTime;
+    $('#videoTime').textContent = fmtTime(video.currentTime);
+  }
+
+  // Keeps the preview moving while a video plays, at most 30 times per second.
+  let videoLoopOn = false;
+  function startVideoLoop() {
+    if (videoLoopOn) return;
+    videoLoopOn = true;
+    let last = 0;
+    const tick = (now) => {
+      if (!assets.media.some(isVideo)) {
+        videoLoopOn = false;
+        return;
+      }
+      requestAnimationFrame(tick);
+      // 28 ms: every second frame on a 60 Hz display, whose timestamps jitter around 33.3 ms
+      if (playing || recording || videoPaused || now - last < 28 || !activeVideos().length) return;
+      last = now;
+      renderPreview(state);
+      updateVideoTime(activeVideos());
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- media loading
+
+  const isMediaType = (type) => type.startsWith('image/') || type.startsWith('video/');
 
   function loadImage(file) {
     return new Promise((resolve, reject) => {
@@ -518,25 +629,82 @@
     });
   }
 
+  function loadVideo(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      const fail = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Deze video kan de browser niet afspelen'));
+      };
+      video.onerror = fail;
+      video.onloadeddata = async () => {
+        video.onloadeddata = null;
+        if (!video.videoWidth) return fail();
+        // Browser recordings report no duration until they have been seeked to the end.
+        if (video.duration === Infinity) {
+          await new Promise((res) => {
+            video.addEventListener('durationchange', res, { once: true });
+            video.currentTime = 1e9;
+            setTimeout(res, 3000);
+          });
+          await seekVideo(video, 0);
+        }
+        video.addEventListener('seeked', () => {
+          if (!recording) requestRender();
+        });
+        resolve({ img: video, url });
+      };
+      video.src = url;
+    });
+  }
+
+  function videoThumb(video) {
+    const { canvas, ctx } = util.makeCanvas(160, 120);
+    util.drawCover(ctx, video, 160, 120);
+    return canvas.toDataURL('image/jpeg', 0.7);
+  }
+
   // First empty slot of the current layout, otherwise the first slot.
   function targetSlot() {
     const n = slotCount(state.layout);
-    for (let i = 0; i < n; i++) if (!assets.images[i]) return i;
+    for (let i = 0; i < n; i++) if (!assets.media[i]) return i;
     return 0;
   }
 
-  async function setImage(file, slot) {
-    if (!file || !file.type.startsWith('image/')) {
-      toast('Alleen afbeeldingen worden ondersteund');
+  async function setMedia(file, slot) {
+    if (!file || !isMediaType(file.type)) {
+      toast('Alleen afbeeldingen en video’s worden ondersteund');
+      return;
+    }
+    if (recording) {
+      toast('Wacht tot de video-export klaar is');
       return;
     }
     try {
-      const { img, url } = await loadImage(file);
+      const video = file.type.startsWith('video/');
+      const { img, url } = await (video ? loadVideo(file) : loadImage(file));
+      const old = assets.media[slot];
+      if (isVideo(old)) {
+        old.pause();
+        old.removeAttribute('src');
+        old.load();
+      }
       if (assets.urls[slot]) URL.revokeObjectURL(assets.urls[slot]);
-      assets.images[slot] = img;
+      assets.media[slot] = img;
       assets.urls[slot] = url;
+      assets.thumbs[slot] = video ? videoThumb(img) : url;
       assets.ids[slot] = ++assets.counter;
-      const tall = img.naturalHeight > img.naturalWidth * 1.5;
+      if (video) {
+        videoPaused = false;
+        startVideoLoop();
+      }
+      const { w, h } = util.srcSize(img);
+      const tall = h > w * 1.5;
       const aspect = frames.contentAspect(state.frame, state.orientation);
       if (slot === 0 && tall && (state.frame.startsWith('browser') || (aspect && aspect < 1))) {
         state.frame = 'iphone-17-pro';
@@ -663,9 +831,10 @@
     const n = slotCount(state.layout);
     const names = ['Hoofd', '2', '3'];
     $('#slots').innerHTML = Array.from({ length: n }, (_, i) => {
-      const url = assets.urls[i];
+      const url = assets.thumbs[i];
       const inner = url ? `<img src="${url}" alt="">` : '<span class="plus">+</span>';
-      return `<button class="slot${url ? ' filled' : ''}" data-slot="${i}" title="Afbeelding ${i + 1} kiezen">${inner}<small>${names[i]}</small></button>`;
+      const badge = isVideo(assets.media[i]) ? '<i class="slot-badge">▶</i>' : '';
+      return `<button class="slot${url ? ' filled' : ''}" data-slot="${i}" title="Afbeelding of video ${i + 1} kiezen">${inner}${badge}<small>${names[i]}</small></button>`;
     }).join('');
   }
 
@@ -717,10 +886,11 @@
     $('#wmOptions').hidden = !state.watermark.enabled;
 
     preview.classList.toggle('checker', state.bg.type === 'transparent');
-    $('#addPill').hidden = hasImage();
+    $('#addPill').hidden = hasMedia();
     $('#sizeLabel').textContent = `${state.size.w} × ${state.size.h}`;
     $('#exportDims').textContent = `${state.size.w * state.export.mult} × ${state.size.h * state.export.mult} px`;
     renderSlots();
+    syncVideos();
     updateHistoryButtons();
   }
 
@@ -855,9 +1025,23 @@
     $('#uploadBtn').addEventListener('click', openPicker);
     $('#addPill').addEventListener('click', openPicker);
     $('#fileInput').addEventListener('change', (e) => {
-      setImage(e.target.files[0], pendingSlot ?? targetSlot());
+      setMedia(e.target.files[0], pendingSlot ?? targetSlot());
       pendingSlot = null;
       e.target.value = '';
+    });
+    $('#videoPauseBtn').addEventListener('click', () => {
+      videoPaused = !videoPaused;
+      syncVideos();
+    });
+    // Dragging the timeline pauses, so a frame can be picked for a still export.
+    $('#videoSeek').addEventListener('input', (e) => {
+      const time = Number(e.target.value);
+      if (!videoPaused) {
+        videoPaused = true;
+        syncVideos();
+      }
+      $('#videoTime').textContent = fmtTime(time);
+      seekVideos(activeVideos(), time);
     });
     $('#bgUploadBtn').addEventListener('click', () => $('#bgFileInput').click());
     $('#bgFileInput').addEventListener('change', (e) => {
@@ -866,10 +1050,10 @@
     });
 
     document.addEventListener('paste', (e) => {
-      const item = Array.from(e.clipboardData ? e.clipboardData.items : []).find((i) => i.type.startsWith('image/'));
+      const item = Array.from(e.clipboardData ? e.clipboardData.items : []).find((i) => isMediaType(i.type));
       if (item) {
         e.preventDefault();
-        setImage(item.getAsFile(), targetSlot());
+        setMedia(item.getAsFile(), targetSlot());
       }
     });
 
@@ -888,10 +1072,10 @@
       e.preventDefault();
       dragDepth = 0;
       document.body.classList.remove('dragover');
-      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      const files = Array.from(e.dataTransfer.files).filter((f) => isMediaType(f.type));
       const n = slotCount(state.layout);
-      if (files.length > 1) files.slice(0, n).forEach((f, i) => setImage(f, i));
-      else if (files[0]) setImage(files[0], targetSlot());
+      if (files.length > 1) files.slice(0, n).forEach((f, i) => setMedia(f, i));
+      else if (files[0]) setMedia(files[0], targetSlot());
     });
 
     // drag the mockup; hold Shift for precision
@@ -968,6 +1152,6 @@
     get state() { return state; },
     exportImage,
     exportVideo,
-    setImage,
+    setMedia,
   };
 })();
